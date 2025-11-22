@@ -161,10 +161,11 @@
         </div>
       </div>
     </div>
-  </div>
+  </div><!-- /row -->
 </div>
 
 <script>
+/* ================= CONFIG ================= */
 const CONFIG = {
   ADMIN_PW: '0000',
   DEFAULT_ROSTER: ['김영미','최진아','신은비','유승아','정민지','김다빈','김민지','남윤주','오지수','조예진','김영빈'],
@@ -173,8 +174,8 @@ const CONFIG = {
     '2026-01-01':'신정','2026-03-01':'삼일절','2026-05-05':'어린이날','2026-06-06':'현충일','2026-08-15':'광복절','2026-10-03':'개천절','2026-10-09':'한글날','2026-12-25':'성탄절',
     '2026-02-16':'설날 연휴','2026-02-17':'설날','2026-02-18':'설날 연휴',
     '2026-05-24':'부처님오신날','2026-05-25':'대체공휴일',
-    '2026-09-24':'추석 연휴','2026-09-25':'추석','2026-09-26':'추석 연휴'
-,'2025-12-25':'크리스마스'  },
+    '2026-09-24':'추석 연휴','2026-09-25':'추석','2026-09-26':'추석 연휴','2025-12-25':'크리스마스'
+  },
   DUMPLING_DEFAULT: ['고기만두','김치만두','갈비만두','새우만두','김치왕만두','고기왕만두'],
   GIMBAP_DEFAULT: [
     '기본김밥(소)','기본김밥(중)','진미김밥(소)','진미김밥(중)','치즈김밥(소)','치즈김밥(중)',
@@ -182,6 +183,7 @@ const CONFIG = {
   ]
 };
 
+/* ================= STORAGE ================= */
 const STORE_KEY = 'meal-order-v3';
 const $ = (sel)=>document.querySelector(sel);
 
@@ -190,7 +192,7 @@ function freshStore(){
     roster: CONFIG.DEFAULT_ROSTER.slice(),
     visibility: { cafe:true, dumpling:true, gimbap:true },
     mode:'lunch',
-    month:'2026-01',   // 기본은 그대로
+    month:'2026-01',
     lunchByDate:{},
     cafeByName:{},
     dumplingByName:{},
@@ -207,7 +209,7 @@ function loadStore(){
 }
 function saveStore(s){ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }
 
-/* ===== DATE UTILS ===== */
+/* ================= DATE UTILS ================= */
 function ymdRange(start, end){
   const out=[];
   const s=new Date(start+'T00:00:00');
@@ -220,8 +222,6 @@ function ymdRange(start, end){
   }
   return out;
 }
-
-/* ✅ 2025-12 + 2026 전체 */
 function monthsList(){
   const arr = ['2025-12'];
   for(let i=1;i<=12;i++){
@@ -229,11 +229,10 @@ function monthsList(){
   }
   return arr;
 }
-
 function weekday(ymd){ return new Date(ymd+'T00:00:00').getDay(); }
 function label(ymd){ return `${ymd}(${CONFIG.WEEKDAY_KO[weekday(ymd)]})`; }
 
-/* ===== UI STATE ===== */
+/* ================= UI STATE ================= */
 let adminMode = false;
 const monthSelect = $('#monthSelect');
 const modeSelect  = $('#modeSelect');
@@ -246,7 +245,7 @@ function setResult(html, ok=true){
   resultBox.innerHTML = ok ? `<div class="ok">${html}</div>` : `<div class="warn">${html}</div>`;
 }
 
-/* ===== MODES ===== */
+/* ================= MODES ================= */
 const MODES = [
   {key:'lunch',   label:'점심식사'},
   {key:'cafe',    label:'카페'},
@@ -278,7 +277,7 @@ modeSelect.addEventListener('change', ()=>{
   renderAll();
 });
 
-/* ===== MONTH ===== */
+/* ================= MONTH SELECT ================= */
 function renderMonthSelect(){
   monthSelect.innerHTML='';
   const list = monthsList();
@@ -302,7 +301,13 @@ monthSelect.addEventListener('change', ()=>{
   renderAll();
 });
 
-/* ===== ADMIN TOGGLE ===== */
+/* ✅ 점심식사 모드에서만 월 드롭박스 보이기 */
+function updateMonthVisibility(){
+  const st = loadStore();
+  monthSelect.style.display = (st.mode === 'lunch') ? '' : 'none';
+}
+
+/* ================= ADMIN TOGGLE ================= */
 $('#adminBtn').addEventListener('click', ()=>{
   if (!adminMode){
     if ($('#adminPw').value !== CONFIG.ADMIN_PW){ alert('관리자 비밀번호 오류'); return; }
@@ -320,7 +325,7 @@ function updateAdminVisibility(){
   });
 }
 
-/* ===== VISIBILITY ===== */
+/* ================= VISIBILITY SAVE ================= */
 $('#visSaveBtn').addEventListener('click', ()=>{
   if (!adminMode) return;
   const st = loadStore();
@@ -338,7 +343,7 @@ function renderVisibilityPanel(){
   $('#visGimbap').checked   = !!st.visibility.gimbap;
 }
 
-/* ===== ROSTER ===== */
+/* ================= ROSTER ================= */
 function renderRosterPanel(){
   const st = loadStore();
   const box = $('#rosterList');
@@ -386,7 +391,7 @@ $('#rosterAddBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
-/* ===== MENU PANEL ===== */
+/* ================= MENU PANEL (dumpling/gimbap) ================= */
 function renderMenuPanel(){
   const st=loadStore();
   const panel=$('#adminMenuPanel');
@@ -441,7 +446,7 @@ $('#menuAddBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
-/* ===== LUNCH REALTIME ===== */
+/* ================= LUNCH: realtime date choices ================= */
 function renderDateChoicesRealtime(datesBox, currentName){
   const st = loadStore();
   const ym = monthSelect.value || '2026-01';
@@ -456,7 +461,7 @@ function renderDateChoicesRealtime(datesBox, currentName){
     const wd = weekday(ymd);
     const isHoliday2026 = !!CONFIG.HOLIDAYS_2026[ymd];
 
-    if (isHoliday2026 || wd===0 || wd===6) return;
+    if (isHoliday2026 || wd===0 || wd===6) return; // 토/일/공휴일 제거
 
     const names = st.lunchByDate[ymd]||[];
     const checked = currentName && names.includes(currentName);
@@ -510,7 +515,7 @@ function renderDateChoicesRealtime(datesBox, currentName){
   }
 }
 
-/* ===== FORM ===== */
+/* ================= FORM ================= */
 function renderForm(){
   const st = loadStore();
   $('#formTitle').textContent = MODES.find(m=>m.key===st.mode).label + " 신청";
@@ -663,7 +668,7 @@ function renderForm(){
   }
 }
 
-/* ===== RIGHT VIEW ===== */
+/* ================= RIGHT VIEW ================= */
 function renderLunchCalendarCountsOnly(){
   const st=loadStore();
   const ym=monthSelect.value||'2026-01';
@@ -835,7 +840,7 @@ function renderRightView(){
   rightView.appendChild(stack);
 }
 
-/* ===== ADMIN SUMMARY ===== */
+/* ================= ADMIN SUMMARY ================= */
 function renderAdminSummary(){
   const st=loadStore();
   const box=$('#adminSummary');
@@ -922,14 +927,14 @@ function renderAdminSummary(){
   }
 }
 
-/* ===== HELPERS ===== */
+/* ================= HELPERS ================= */
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[m]));
 }
 
-/* ===== RENDER ALL ===== */
+/* ================= RENDER ALL ================= */
 function renderAll(){
   renderModeSelect();
   renderForm();
@@ -939,9 +944,10 @@ function renderAll(){
   renderVisibilityPanel();
   renderMenuPanel();
   updateAdminVisibility();
+  updateMonthVisibility();   // ✅ 여기서 모드별 월드롭박스 표시/숨김 처리
 }
 
-/* ===== BOOT ===== */
+/* ================= BOOT ================= */
 (function boot(){
   renderMonthSelect();
   renderModeSelect();
