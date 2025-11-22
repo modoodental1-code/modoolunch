@@ -38,9 +38,8 @@
   .cell .day{font-weight:700}
   .cell .holiday{color:#dc2626; font-weight:700}
 
-  /* 점심 달력 주말 색 */
-  .day.sun { color:#dc2626; font-weight:700; } /* 일요일 빨강 */
-  .day.sat { color:#2563eb; font-weight:700; } /* 토요일 파랑 */
+  .day.sun { color:#dc2626; font-weight:700; }
+  .day.sat { color:#2563eb; font-weight:700; }
 
   .head{display:flex; gap:8px; align-items:center; margin-bottom:10px; justify-content:space-between}
   .badge{display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:var(--pri-100); color:var(--pri)}
@@ -82,7 +81,6 @@
 
   .view-stack{display:grid; gap:12px;}
 
-  /* ✅ 관리자/표에서 메뉴 줄바꿈 방지 */
   .nowrap{
     white-space: nowrap;
     word-break: keep-all;
@@ -95,7 +93,6 @@
   <h1>모원치 식사주문표</h1>
 
   <div class="row">
-    <!-- LEFT -->
     <div class="card" id="formCard">
       <div class="head">
         <h2 id="formTitle">신청 폼</h2>
@@ -105,7 +102,6 @@
       <div id="result" class="status"></div>
     </div>
 
-    <!-- RIGHT -->
     <div class="card" id="calendarCard">
       <div class="head">
         <div class="calendar-bar">
@@ -123,7 +119,6 @@
         <div id="rightView"></div>
 
         <div class="side-columns">
-          <!-- 관리자 요약 -->
           <div class="panel admin-only" id="adminSummaryPanel">
             <div style="display:flex; justify-content:space-between; align-items:center;">
               <h3 id="adminSummaryTitle">관리자 요약</h3>
@@ -132,7 +127,6 @@
             <div id="adminSummary"></div>
           </div>
 
-          <!-- 관리자 설정 -->
           <div>
             <div class="panel admin-only" id="adminVisibilityPanel" style="margin-bottom:12px;">
               <h3>모드 노출 설정</h3>
@@ -166,12 +160,11 @@
           </div>
         </div>
       </div>
-    </div><!-- /right -->
-  </div><!-- /row -->
+    </div>
+  </div>
 </div>
 
 <script>
-/* ================= CONFIG ================= */
 const CONFIG = {
   ADMIN_PW: '0000',
   DEFAULT_ROSTER: ['김영미','최진아','신은비','유승아','정민지','김다빈','김민지','남윤주','오지수','조예진','김영빈'],
@@ -197,11 +190,11 @@ function freshStore(){
     roster: CONFIG.DEFAULT_ROSTER.slice(),
     visibility: { cafe:true, dumpling:true, gimbap:true },
     mode:'lunch',
-    month:'2026-01',
-    lunchByDate:{},        // {ymd:[name,...]}
-    cafeByName:{},         // {name: text}
-    dumplingByName:{},     // {name: option}
-    gimbapByName:{},       // {name: option}
+    month:'2026-01',   // 기본은 그대로
+    lunchByDate:{},
+    cafeByName:{},
+    dumplingByName:{},
+    gimbapByName:{},
     dumplingOptions: CONFIG.DUMPLING_DEFAULT.slice(),
     gimbapOptions: CONFIG.GIMBAP_DEFAULT.slice(),
   };
@@ -214,7 +207,7 @@ function loadStore(){
 }
 function saveStore(s){ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }
 
-/* ================= DATE UTILS ================= */
+/* ===== DATE UTILS ===== */
 function ymdRange(start, end){
   const out=[];
   const s=new Date(start+'T00:00:00');
@@ -227,11 +220,20 @@ function ymdRange(start, end){
   }
   return out;
 }
-function months2026(){ return Array.from({length:12},(_,i)=>`2026-${String(i+1).padStart(2,'0')}`); }
+
+/* ✅ 2025-12 + 2026 전체 */
+function monthsList(){
+  const arr = ['2025-12'];
+  for(let i=1;i<=12;i++){
+    arr.push(`2026-${String(i).padStart(2,'0')}`);
+  }
+  return arr;
+}
+
 function weekday(ymd){ return new Date(ymd+'T00:00:00').getDay(); }
 function label(ymd){ return `${ymd}(${CONFIG.WEEKDAY_KO[weekday(ymd)]})`; }
 
-/* ================= UI STATE ================= */
+/* ===== UI STATE ===== */
 let adminMode = false;
 const monthSelect = $('#monthSelect');
 const modeSelect  = $('#modeSelect');
@@ -244,7 +246,7 @@ function setResult(html, ok=true){
   resultBox.innerHTML = ok ? `<div class="ok">${html}</div>` : `<div class="warn">${html}</div>`;
 }
 
-/* ================= MODES ================= */
+/* ===== MODES ===== */
 const MODES = [
   {key:'lunch',   label:'점심식사'},
   {key:'cafe',    label:'카페'},
@@ -276,18 +278,22 @@ modeSelect.addEventListener('change', ()=>{
   renderAll();
 });
 
-/* ================= MONTH ================= */
+/* ===== MONTH ===== */
 function renderMonthSelect(){
   monthSelect.innerHTML='';
-  months2026().forEach(ym=>{
+  const list = monthsList();
+  list.forEach(ym=>{
     const [y,m]=ym.split('-');
     const o=document.createElement('option');
     o.value=ym;
     o.textContent=`${y}년 ${m}월`;
     monthSelect.appendChild(o);
   });
+
   const st=loadStore();
-  monthSelect.value = st.month || '2026-01';
+  if(!list.includes(st.month)) st.month = list[0];
+  monthSelect.value = st.month;
+  saveStore(st);
 }
 monthSelect.addEventListener('change', ()=>{
   const st=loadStore();
@@ -296,7 +302,7 @@ monthSelect.addEventListener('change', ()=>{
   renderAll();
 });
 
-/* ================= ADMIN TOGGLE ================= */
+/* ===== ADMIN TOGGLE ===== */
 $('#adminBtn').addEventListener('click', ()=>{
   if (!adminMode){
     if ($('#adminPw').value !== CONFIG.ADMIN_PW){ alert('관리자 비밀번호 오류'); return; }
@@ -314,7 +320,7 @@ function updateAdminVisibility(){
   });
 }
 
-/* ================= VISIBILITY SAVE ================= */
+/* ===== VISIBILITY ===== */
 $('#visSaveBtn').addEventListener('click', ()=>{
   if (!adminMode) return;
   const st = loadStore();
@@ -332,7 +338,7 @@ function renderVisibilityPanel(){
   $('#visGimbap').checked   = !!st.visibility.gimbap;
 }
 
-/* ================= ROSTER ================= */
+/* ===== ROSTER ===== */
 function renderRosterPanel(){
   const st = loadStore();
   const box = $('#rosterList');
@@ -380,7 +386,7 @@ $('#rosterAddBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
-/* ================= MENU PANEL (dumpling/gimbap) ================= */
+/* ===== MENU PANEL ===== */
 function renderMenuPanel(){
   const st=loadStore();
   const panel=$('#adminMenuPanel');
@@ -435,7 +441,7 @@ $('#menuAddBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
-/* ================= LUNCH: realtime date choices ================= */
+/* ===== LUNCH REALTIME ===== */
 function renderDateChoicesRealtime(datesBox, currentName){
   const st = loadStore();
   const ym = monthSelect.value || '2026-01';
@@ -448,9 +454,9 @@ function renderDateChoicesRealtime(datesBox, currentName){
 
   ymdRange(monthStart, monthEnd).forEach(ymd=>{
     const wd = weekday(ymd);
-    const isHoliday = !!CONFIG.HOLIDAYS_2026[ymd];
+    const isHoliday2026 = !!CONFIG.HOLIDAYS_2026[ymd];
 
-    if (isHoliday || wd===0 || wd===6) return; // 토/일/공휴일 제거
+    if (isHoliday2026 || wd===0 || wd===6) return;
 
     const names = st.lunchByDate[ymd]||[];
     const checked = currentName && names.includes(currentName);
@@ -504,7 +510,7 @@ function renderDateChoicesRealtime(datesBox, currentName){
   }
 }
 
-/* ================= FORM ================= */
+/* ===== FORM ===== */
 function renderForm(){
   const st = loadStore();
   $('#formTitle').textContent = MODES.find(m=>m.key===st.mode).label + " 신청";
@@ -657,7 +663,7 @@ function renderForm(){
   }
 }
 
-/* ================= RIGHT VIEW ================= */
+/* ===== RIGHT VIEW ===== */
 function renderLunchCalendarCountsOnly(){
   const st=loadStore();
   const ym=monthSelect.value||'2026-01';
@@ -829,7 +835,7 @@ function renderRightView(){
   rightView.appendChild(stack);
 }
 
-/* ================= ADMIN SUMMARY ================= */
+/* ===== ADMIN SUMMARY ===== */
 function renderAdminSummary(){
   const st=loadStore();
   const box=$('#adminSummary');
@@ -902,7 +908,6 @@ function renderAdminSummary(){
         renderAll();
       });
 
-      /* ✅ 메뉴 2글자여도 한줄 고정(nowrap) */
       row.innerHTML=`
         <div><b>${escapeHtml(nm)}</b></div>
         <div style="display:flex;gap:6px;align-items:center; flex:1; min-width:0;">
@@ -917,14 +922,14 @@ function renderAdminSummary(){
   }
 }
 
-/* ================= HELPERS ================= */
+/* ===== HELPERS ===== */
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m => ({
     "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
   }[m]));
 }
 
-/* ================= RENDER ALL ================= */
+/* ===== RENDER ALL ===== */
 function renderAll(){
   renderModeSelect();
   renderForm();
@@ -936,7 +941,7 @@ function renderAll(){
   updateAdminVisibility();
 }
 
-/* ================= BOOT ================= */
+/* ===== BOOT ===== */
 (function boot(){
   renderMonthSelect();
   renderModeSelect();
