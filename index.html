@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>모원치 식사주문표</title>
+
+<style>
+  :root{
+    --bg:#f7f9fc; --card:#fff; --ink:#1d2330; --muted:#6b7280;
+    --pri:#2563eb; --pri-100:#e0e7ff; --ok:#16a34a; --warn:#ef4444;
+    --line:#e5e7eb;
+    --cell-w: clamp(80px, 12vw, 140px);
+    --cell-h: clamp(70px, 12vw, 120px);
+    --cell-pad: 8px;
+  }
+  *{box-sizing:border-box}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Helvetica,Arial,sans-serif}
+  .wrap{max-width:1600px; margin:28px auto; padding:0 16px}
+  h1{font-size:22px; margin:0 0 6px}
+  .row{display:grid; grid-template-columns:1.05fr 2.95fr; gap:16px; align-items:start}
+  .card{background:var(--card); border-radius:14px; box-shadow:0 2px 10px rgba(2,8,20,.06); padding:14px}
+  .card h2{margin:0 0 10px; font-size:18px}
+  label{display:block; margin:6px 0}
+  select,button,input[type="text"],input[type="password"],input[type="number"],textarea{
+    width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:10px; font-size:14px; background:#fff
+  }
+  textarea{min-height:100px; resize:vertical}
+
+  .grid{display:grid; grid-template-columns:repeat(7, minmax(var(--cell-w), 1fr)); gap:8px}
+  .dow{background:#eef3ff; border-radius:10px; text-align:center; padding:8px 0; font-weight:600; font-size:13px}
+  .cell{
+    background:#fff; min-height:var(--cell-h);
+    border:1px solid var(--line); border-radius:10px; padding:var(--cell-pad);
+    position:relative; font-size:13px; line-height:1.25;
+  }
+  .cell.muted{background:#f3f4f6}
+  .cell .day{font-weight:700}
+  .cell .holiday{color:#dc2626; font-weight:700}
+
+  /* 점심 달력 주말 색 */
+  .day.sun { color:#dc2626; font-weight:700; } /* 일요일 빨강 */
+  .day.sat { color:#2563eb; font-weight:700; } /* 토요일 파랑 */
+
+  .head{display:flex; gap:8px; align-items:center; margin-bottom:10px; justify-content:space-between}
+  .badge{display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:var(--pri-100); color:var(--pri)}
+  .status{margin-top:10px; font-size:14px}
+  .ok{color:var(--ok)} .warn{color:var(--warn)}
+  .dates{max-height:360px; overflow:auto; border:1px solid var(--line); border-radius:10px; padding:10px; background:#fff}
+  .date-item{display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed #f0f0f0}
+  .date-item:last-child{border-bottom:none}
+  .pill{display:inline-block; padding:2px 6px; border-radius:8px; font-size:12px; background:#f3f4f6; color:#4b5563}
+  .actions{display:flex; gap:8px; margin-top:12px}
+  .btn{display:inline-flex; gap:8px; align-items:center; justify-content:center; padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:13px}
+  .btn.small{padding:2px 6px; font-size:12px}
+  .btn.primary{background:var(--pri); color:#fff; border-color:var(--pri)}
+  .btn.warn{background:#fff0f0; color:#b91c1c; border-color:#fecaca}
+  .small-muted{font-size:12px; color:var(--muted)}
+
+  .calendar-bar{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .section{display:grid; grid-template-columns:1fr; gap:14px}
+  .side-columns{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  .panel{background:#fafafa; border:1px solid var(--line); border-radius:12px; padding:10px}
+  .panel h3{margin:0 0 8px; font-size:16px}
+  .pending-name{display:flex; gap:6px; align-items:center; justify-content:space-between; padding:6px 8px; border-bottom:1px dashed #eaeaea}
+  .pending-name:last-child{border-bottom:none}
+
+  @media (max-width: 1100px){
+    .row{grid-template-columns:1fr}
+    .dates{max-height:300px}
+  }
+
+  table.simple{
+    width:100%; border-collapse:collapse; font-size:14px; background:#fff;
+    border:1px solid var(--line); border-radius:10px; overflow:hidden;
+  }
+  table.simple th, table.simple td{
+    border-bottom:1px solid var(--line); padding:8px 10px; text-align:left;
+  }
+  table.simple th{background:#f3f4f6; font-size:13px; color:#374151;}
+  table.simple tr:last-child td{border-bottom:none;}
+
+  .view-stack{display:grid; gap:12px;}
+
+  /* ✅ 관리자/표에서 메뉴 줄바꿈 방지 */
+  .nowrap{
+    white-space: nowrap;
+    word-break: keep-all;
+  }
+</style>
+</head>
+<body>
+
+<div id="app" class="wrap">
+  <h1>모원치 식사주문표</h1>
+
+  <div class="row">
+    <!-- LEFT -->
+    <div class="card" id="formCard">
+      <div class="head">
+        <h2 id="formTitle">신청 폼</h2>
+        <span class="badge" id="formBadge">선택 즉시 반영</span>
+      </div>
+      <div id="formArea"></div>
+      <div id="result" class="status"></div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="card" id="calendarCard">
+      <div class="head">
+        <div class="calendar-bar">
+          <h2 style="margin:0;">보기</h2>
+          <select id="monthSelect"></select>
+          <select id="modeSelect"></select>
+        </div>
+        <div class="lock">
+          <input id="adminPw" type="password" placeholder="관리자 비밀번호" />
+          <button id="adminBtn" class="btn">관리자 모드 OFF</button>
+        </div>
+      </div>
+
+      <div class="section">
+        <div id="rightView"></div>
+
+        <div class="side-columns">
+          <!-- 관리자 요약 -->
+          <div class="panel admin-only" id="adminSummaryPanel">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 id="adminSummaryTitle">관리자 요약</h3>
+              <button id="clearAllBtn" class="btn warn small" style="display:none;">전체삭제</button>
+            </div>
+            <div id="adminSummary"></div>
+          </div>
+
+          <!-- 관리자 설정 -->
+          <div>
+            <div class="panel admin-only" id="adminVisibilityPanel" style="margin-bottom:12px;">
+              <h3>모드 노출 설정</h3>
+              <div class="small-muted">체크한 모드만 일반 사용자에게 보임 (점심식사는 항상 표시)</div>
+              <label><input type="checkbox" id="visCafe"> 카페</label>
+              <label><input type="checkbox" id="visDumpling"> 만두</label>
+              <label><input type="checkbox" id="visGimbap"> 김밥</label>
+              <button class="btn primary" id="visSaveBtn" style="margin-top:8px;">노출 저장</button>
+            </div>
+
+            <div class="panel admin-only" id="adminMenuPanel" style="display:none; margin-bottom:12px;">
+              <h3 id="menuPanelTitle">메뉴 관리</h3>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <input id="menuNew" type="text" placeholder="메뉴 추가" />
+                <button id="menuAddBtn" class="btn">추가</button>
+              </div>
+              <div id="menuList" style="max-height:260px; overflow:auto; margin-top:8px;"></div>
+            </div>
+
+            <div class="panel admin-only">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h3>이름 관리</h3>
+                <div style="color:#6b7280; font-size:12px;">관리자 모드에서 편집</div>
+              </div>
+              <div style="display:flex; gap:8px; margin-top:8px;">
+                <input id="rosterNew" type="text" placeholder="이름 추가" />
+                <button id="rosterAddBtn" class="btn">추가</button>
+              </div>
+              <div id="rosterList" style="max-height:260px; overflow:auto; margin-top:8px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /right -->
+  </div><!-- /row -->
+</div>
+
+<script>
+/* ================= CONFIG ================= */
+const CONFIG = {
+  ADMIN_PW: '0000',
+  DEFAULT_ROSTER: ['김영미','최진아','신은비','유승아','정민지','김다빈','김민지','남윤주','오지수','조예진','김영빈'],
+  WEEKDAY_KO: ['일','월','화','수','목','금','토'],
+  HOLIDAYS_2026: {
+    '2026-01-01':'신정','2026-03-01':'삼일절','2026-05-05':'어린이날','2026-06-06':'현충일','2026-08-15':'광복절','2026-10-03':'개천절','2026-10-09':'한글날','2026-12-25':'성탄절',
+    '2026-02-16':'설날 연휴','2026-02-17':'설날','2026-02-18':'설날 연휴',
+    '2026-05-24':'부처님오신날','2026-05-25':'대체공휴일',
+    '2026-09-24':'추석 연휴','2026-09-25':'추석','2026-09-26':'추석 연휴'
+  },
+  DUMPLING_DEFAULT: ['고기만두','김치만두','갈비만두','새우만두','김치왕만두','고기왕만두'],
+  GIMBAP_DEFAULT: [
+    '기본김밥(소)','기본김밥(중)','진미김밥(소)','진미김밥(중)','치즈김밥(소)','치즈김밥(중)',
+    '매운김밥(소)','매운김밥(중)','참치김밥(소)','참치김밥(중)'
+  ]
+};
+
+const STORE_KEY = 'meal-order-v3';
+const $ = (sel)=>document.querySelector(sel);
+
+function freshStore(){
+  return {
+    roster: CONFIG.DEFAULT_ROSTER.slice(),
+    visibility: { cafe:true, dumpling:true, gimbap:true },
+    mode:'lunch',
+    month:'2026-01',
+    lunchByDate:{},        // {ymd:[name,...]}
+    cafeByName:{},         // {name: text}
+    dumplingByName:{},     // {name: option}
+    gimbapByName:{},       // {name: option}
+    dumplingOptions: CONFIG.DUMPLING_DEFAULT.slice(),
+    gimbapOptions: CONFIG.GIMBAP_DEFAULT.slice(),
+  };
+}
+function loadStore(){
+  try{
+    const s = JSON.parse(localStorage.getItem(STORE_KEY));
+    return s || freshStore();
+  }catch(e){ return freshStore(); }
+}
+function saveStore(s){ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }
+
+/* ================= DATE UTILS ================= */
+function ymdRange(start, end){
+  const out=[];
+  const s=new Date(start+'T00:00:00');
+  const e=new Date(end+'T00:00:00');
+  for (let d=new Date(s); d<=e; d.setDate(d.getDate()+1)){
+    const y=d.getFullYear();
+    const m=String(d.getMonth()+1).padStart(2,'0');
+    const dd=String(d.getDate()).padStart(2,'0');
+    out.push(`${y}-${m}-${dd}`);
+  }
+  return out;
+}
+function months2026(){ return Array.from({length:12},(_,i)=>`2026-${String(i+1).padStart(2,'0')}`); }
+function weekday(ymd){ return new Date(ymd+'T00:00:00').getDay(); }
+function label(ymd){ return `${ymd}(${CONFIG.WEEKDAY_KO[weekday(ymd)]})`; }
+
+/* ================= UI STATE ================= */
+let adminMode = false;
+const monthSelect = $('#monthSelect');
+const modeSelect  = $('#modeSelect');
+const formArea    = $('#formArea');
+const rightView   = $('#rightView');
+const resultBox   = $('#result');
+const clearAllBtn = $('#clearAllBtn');
+
+function setResult(html, ok=true){
+  resultBox.innerHTML = ok ? `<div class="ok">${html}</div>` : `<div class="warn">${html}</div>`;
+}
+
+/* ================= MODES ================= */
+const MODES = [
+  {key:'lunch',   label:'점심식사'},
+  {key:'cafe',    label:'카페'},
+  {key:'dumpling',label:'만두'},
+  {key:'gimbap',  label:'김밥'},
+];
+
+function renderModeSelect(){
+  const st = loadStore();
+  modeSelect.innerHTML = '';
+  MODES.forEach(m=>{
+    if (!adminMode && m.key!=='lunch'){
+      if (!st.visibility[m.key]) return;
+    }
+    const o=document.createElement('option');
+    o.value=m.key; o.textContent=m.label;
+    modeSelect.appendChild(o);
+  });
+
+  if (![...modeSelect.options].some(o=>o.value===st.mode)){
+    st.mode='lunch'; saveStore(st);
+  }
+  modeSelect.value = st.mode;
+}
+modeSelect.addEventListener('change', ()=>{
+  const st = loadStore();
+  st.mode = modeSelect.value;
+  saveStore(st);
+  renderAll();
+});
+
+/* ================= MONTH ================= */
+function renderMonthSelect(){
+  monthSelect.innerHTML='';
+  months2026().forEach(ym=>{
+    const [y,m]=ym.split('-');
+    const o=document.createElement('option');
+    o.value=ym;
+    o.textContent=`${y}년 ${m}월`;
+    monthSelect.appendChild(o);
+  });
+  const st=loadStore();
+  monthSelect.value = st.month || '2026-01';
+}
+monthSelect.addEventListener('change', ()=>{
+  const st=loadStore();
+  st.month = monthSelect.value;
+  saveStore(st);
+  renderAll();
+});
+
+/* ================= ADMIN TOGGLE ================= */
+$('#adminBtn').addEventListener('click', ()=>{
+  if (!adminMode){
+    if ($('#adminPw').value !== CONFIG.ADMIN_PW){ alert('관리자 비밀번호 오류'); return; }
+    adminMode = true;
+    $('#adminBtn').textContent='관리자 모드 ON';
+  }else{
+    adminMode = false;
+    $('#adminBtn').textContent='관리자 모드 OFF';
+  }
+  renderAll();
+});
+function updateAdminVisibility(){
+  document.querySelectorAll('.admin-only').forEach(el=>{
+    el.style.display = adminMode ? '' : 'none';
+  });
+}
+
+/* ================= VISIBILITY SAVE ================= */
+$('#visSaveBtn').addEventListener('click', ()=>{
+  if (!adminMode) return;
+  const st = loadStore();
+  st.visibility.cafe     = $('#visCafe').checked;
+  st.visibility.dumpling = $('#visDumpling').checked;
+  st.visibility.gimbap   = $('#visGimbap').checked;
+  saveStore(st);
+  renderModeSelect();
+  setResult('노출 설정 저장 완료');
+});
+function renderVisibilityPanel(){
+  const st=loadStore();
+  $('#visCafe').checked     = !!st.visibility.cafe;
+  $('#visDumpling').checked = !!st.visibility.dumpling;
+  $('#visGimbap').checked   = !!st.visibility.gimbap;
+}
+
+/* ================= ROSTER ================= */
+function renderRosterPanel(){
+  const st = loadStore();
+  const box = $('#rosterList');
+  box.innerHTML='';
+
+  st.roster.forEach(n=>{
+    const row=document.createElement('div');
+    row.className='pending-name';
+    row.innerHTML = `
+      <div>${n}</div>
+      <div><button class="btn small">삭제</button></div>
+    `;
+    const del=row.querySelector('button');
+    del.disabled=!adminMode;
+
+    del.addEventListener('click', ()=>{
+      if(!adminMode) return;
+      st.roster = st.roster.filter(x=>x!==n);
+
+      Object.keys(st.lunchByDate).forEach(d=>{
+        st.lunchByDate[d]=(st.lunchByDate[d]||[]).filter(x=>x!==n);
+        if(!st.lunchByDate[d].length) delete st.lunchByDate[d];
+      });
+
+      delete st.cafeByName[n];
+      delete st.dumplingByName[n];
+      delete st.gimbapByName[n];
+
+      saveStore(st);
+      renderAll();
+    });
+
+    box.appendChild(row);
+  });
+}
+$('#rosterAddBtn').addEventListener('click', ()=>{
+  if(!adminMode){ alert('관리자만 추가 가능'); return; }
+  const st=loadStore();
+  const v=($('#rosterNew').value||'').trim();
+  if(!v) return;
+  if(st.roster.includes(v)){ alert('이미 있음'); return; }
+  st.roster.push(v);
+  saveStore(st);
+  $('#rosterNew').value='';
+  renderAll();
+});
+
+/* ================= MENU PANEL (dumpling/gimbap) ================= */
+function renderMenuPanel(){
+  const st=loadStore();
+  const panel=$('#adminMenuPanel');
+  const listBox=$('#menuList');
+  const title=$('#menuPanelTitle');
+
+  if(!adminMode || (st.mode!=='dumpling' && st.mode!=='gimbap')){
+    panel.style.display='none';
+    return;
+  }
+  panel.style.display='';
+  const options = st.mode==='dumpling'?st.dumplingOptions:st.gimbapOptions;
+  title.textContent = st.mode==='dumpling'?'만두 메뉴 관리':'김밥 메뉴 관리';
+
+  listBox.innerHTML='';
+  options.forEach(opt=>{
+    const row=document.createElement('div');
+    row.className='pending-name';
+    row.innerHTML=`<div>${opt}</div><div><button class="btn small">삭제</button></div>`;
+
+    row.querySelector('button').addEventListener('click', ()=>{
+      const st2=loadStore();
+      const arr = st2.mode==='dumpling'?st2.dumplingOptions:st2.gimbapOptions;
+      const i=arr.indexOf(opt);
+      if(i>=0) arr.splice(i,1);
+
+      if(!arr.length){
+        if(st2.mode==='dumpling') st2.dumplingOptions=CONFIG.DUMPLING_DEFAULT.slice();
+        else st2.gimbapOptions=CONFIG.GIMBAP_DEFAULT.slice();
+      }
+      saveStore(st2);
+      renderAll();
+    });
+
+    listBox.appendChild(row);
+  });
+}
+$('#menuAddBtn').addEventListener('click', ()=>{
+  if(!adminMode) return;
+  const st=loadStore();
+  if(st.mode!=='dumpling' && st.mode!=='gimbap') return;
+
+  const v=($('#menuNew').value||'').trim();
+  if(!v) return;
+
+  const arr = st.mode==='dumpling'?st.dumplingOptions:st.gimbapOptions;
+  if(arr.includes(v)){ alert('이미 메뉴 있음'); return; }
+
+  arr.push(v);
+  saveStore(st);
+  $('#menuNew').value='';
+  renderAll();
+});
+
+/* ================= LUNCH: realtime date choices ================= */
+function renderDateChoicesRealtime(datesBox, currentName){
+  const st = loadStore();
+  const ym = monthSelect.value || '2026-01';
+  const [Y,M]=ym.split('-');
+  const lastDay = new Date(Number(Y), Number(M), 0).getDate();
+  const monthStart = `${ym}-01`;
+  const monthEnd   = `${ym}-${String(lastDay).padStart(2,'0')}`;
+
+  datesBox.innerHTML='';
+
+  ymdRange(monthStart, monthEnd).forEach(ymd=>{
+    const wd = weekday(ymd);
+    const isHoliday = !!CONFIG.HOLIDAYS_2026[ymd];
+
+    if (isHoliday || wd===0 || wd===6) return; // 토/일/공휴일 제거
+
+    const names = st.lunchByDate[ymd]||[];
+    const checked = currentName && names.includes(currentName);
+
+    const row=document.createElement('div');
+    row.className='date-item';
+
+    const cb=document.createElement('input');
+    cb.type='checkbox';
+    cb.value=ymd;
+    cb.checked=checked;
+    cb.disabled = !currentName;
+
+    const lb=document.createElement('label');
+    lb.style.margin='0';
+    lb.style.flex='1';
+    lb.textContent=label(ymd);
+
+    const pill=document.createElement('span');
+    pill.className='pill';
+    pill.textContent=`인원 ${names.length}`;
+
+    cb.addEventListener('change', ()=>{
+      if(!currentName) return;
+
+      const st2=loadStore();
+      st2.lunchByDate[ymd]=st2.lunchByDate[ymd]||[];
+      const arr=st2.lunchByDate[ymd];
+
+      if(cb.checked){
+        if(!arr.includes(currentName)) arr.push(currentName);
+      }else{
+        st2.lunchByDate[ymd]=arr.filter(x=>x!==currentName);
+        if(!st2.lunchByDate[ymd].length) delete st2.lunchByDate[ymd];
+      }
+      saveStore(st2);
+
+      renderRightView();
+      renderDateChoicesRealtime(datesBox, currentName);
+      if(adminMode) renderAdminSummary();
+    });
+
+    row.appendChild(cb);
+    row.appendChild(lb);
+    row.appendChild(pill);
+    datesBox.appendChild(row);
+  });
+
+  if(!datesBox.children.length){
+    datesBox.innerHTML=`<div class="small-muted">선택 가능한 날짜가 없습니다.</div>`;
+  }
+}
+
+/* ================= FORM ================= */
+function renderForm(){
+  const st = loadStore();
+  $('#formTitle').textContent = MODES.find(m=>m.key===st.mode).label + " 신청";
+  $('#formBadge').textContent = "선택 즉시 반영";
+  formArea.innerHTML='';
+
+  const nameLabel=document.createElement('label');
+  nameLabel.textContent='이름';
+  const nameSelect=document.createElement('select');
+  nameSelect.id='nameSelect';
+  nameSelect.innerHTML=`<option value="">이름 선택</option>` + st.roster.map(n=>`<option value="${n}">${n}</option>`).join('');
+  formArea.appendChild(nameLabel);
+  formArea.appendChild(nameSelect);
+
+  if(st.mode==='lunch'){
+    const info=document.createElement('div');
+    info.className='small-muted';
+    info.style.margin='6px 0 8px';
+    info.textContent='이름 선택 후 날짜 체크/해제하면 즉시 반영됩니다. (토/일/공휴일 선택 불가)';
+    formArea.appendChild(info);
+
+    const lab=document.createElement('label');
+    lab.textContent='희망 날짜';
+    formArea.appendChild(lab);
+
+    const datesBox=document.createElement('div');
+    datesBox.className='dates';
+    datesBox.id='dates';
+    formArea.appendChild(datesBox);
+    renderDateChoicesRealtime(datesBox, null);
+
+    nameSelect.addEventListener('change', ()=>{
+      const nm=nameSelect.value.trim();
+      renderDateChoicesRealtime(datesBox, nm || null);
+      setResult(nm?`${nm} 선택 날짜를 표시합니다.`:'이름을 선택하세요.', !!nm);
+    });
+
+    const actions=document.createElement('div');
+    actions.className='actions';
+    actions.innerHTML=`<button id="clearBtn" class="btn warn">이 달 선택 초기화(이름 기준)</button>`;
+    formArea.appendChild(actions);
+
+    actions.querySelector('#clearBtn').addEventListener('click', ()=>{
+      const nm=nameSelect.value.trim();
+      if(!nm){ alert('이름을 먼저 선택하세요.'); return; }
+      if(!confirm(`${nm}의 ${monthSelect.value} 선택을 모두 해제할까요?`)) return;
+
+      const st2=loadStore();
+      const ym=monthSelect.value;
+      const [Y,M]=ym.split('-');
+      const lastDay=new Date(Number(Y), Number(M), 0).getDate();
+
+      ymdRange(`${ym}-01`, `${ym}-${String(lastDay).padStart(2,'0')}`).forEach(ymd=>{
+        if(st2.lunchByDate[ymd]){
+          st2.lunchByDate[ymd]=st2.lunchByDate[ymd].filter(x=>x!==nm);
+          if(!st2.lunchByDate[ymd].length) delete st2.lunchByDate[ymd];
+        }
+      });
+
+      saveStore(st2);
+      renderRightView();
+      renderDateChoicesRealtime(datesBox, nm);
+      if(adminMode) renderAdminSummary();
+      setResult('초기화 완료');
+    });
+
+  } else if(st.mode==='cafe'){
+    const menuLab=document.createElement('label');
+    menuLab.textContent='메뉴 작성';
+    const ta=document.createElement('textarea');
+    ta.id='cafeMenu';
+    ta.placeholder='예: 아메리카노 2잔, 라떼 1잔...';
+
+    formArea.appendChild(menuLab);
+    formArea.appendChild(ta);
+
+    const actions=document.createElement('div');
+    actions.className='actions';
+    actions.innerHTML=`<button class="btn primary" id="submitBtn">저장(즉시 반영)</button>`;
+    formArea.appendChild(actions);
+
+    actions.querySelector('#submitBtn').addEventListener('click', ()=>{
+      const nm=nameSelect.value.trim();
+      const menu=ta.value.trim();
+      if(!nm){ alert('이름 선택'); return; }
+      if(!menu){ alert('메뉴 작성'); return; }
+
+      const st2=loadStore();
+      st2.cafeByName[nm]=menu;
+      saveStore(st2);
+
+      renderAll();
+      setResult(`${nm} 카페 메뉴 저장`);
+      ta.value='';
+    });
+
+  } else if(st.mode==='dumpling'){
+    const mLab=document.createElement('label');
+    mLab.textContent='만두 메뉴 선택';
+    const sel=document.createElement('select');
+    sel.id='dumplingMenu';
+    st.dumplingOptions.forEach(x=>sel.appendChild(new Option(x,x)));
+
+    formArea.appendChild(mLab);
+    formArea.appendChild(sel);
+
+    const actions=document.createElement('div');
+    actions.className='actions';
+    actions.innerHTML=`<button class="btn primary" id="submitBtn">저장(즉시 반영)</button>`;
+    formArea.appendChild(actions);
+
+    actions.querySelector('#submitBtn').addEventListener('click', ()=>{
+      const nm=nameSelect.value.trim();
+      if(!nm){ alert('이름 선택'); return; }
+
+      const st2=loadStore();
+      st2.dumplingByName[nm]=sel.value;
+      saveStore(st2);
+
+      renderAll();
+      setResult(`${nm} 만두 저장`);
+    });
+
+  } else if(st.mode==='gimbap'){
+    const mLab=document.createElement('label');
+    mLab.textContent='김밥 메뉴 선택';
+    const sel=document.createElement('select');
+    sel.id='gimbapMenu';
+    st.gimbapOptions.forEach(x=>sel.appendChild(new Option(x,x)));
+
+    formArea.appendChild(mLab);
+    formArea.appendChild(sel);
+
+    const actions=document.createElement('div');
+    actions.className='actions';
+    actions.innerHTML=`<button class="btn primary" id="submitBtn">저장(즉시 반영)</button>`;
+    formArea.appendChild(actions);
+
+    actions.querySelector('#submitBtn').addEventListener('click', ()=>{
+      const nm=nameSelect.value.trim();
+      if(!nm){ alert('이름 선택'); return; }
+
+      const st2=loadStore();
+      st2.gimbapByName[nm]=sel.value;
+      saveStore(st2);
+
+      renderAll();
+      setResult(`${nm} 김밥 저장`);
+    });
+  }
+}
+
+/* ================= RIGHT VIEW ================= */
+function renderLunchCalendarCountsOnly(){
+  const st=loadStore();
+  const ym=monthSelect.value||'2026-01';
+  const [Y,M]=ym.split('-');
+  const first=new Date(Number(Y),Number(M)-1,1);
+  const startDow=first.getDay();
+  const days=new Date(Number(Y),Number(M),0).getDate();
+
+  const calendarBox=document.createElement('div');
+
+  const dow=document.createElement('div'); dow.className='grid';
+  CONFIG.WEEKDAY_KO.forEach((w, i)=>{
+    const d=document.createElement('div');
+    d.className='dow';
+    d.textContent=w;
+    if(i===0) d.style.color='#dc2626';
+    if(i===6) d.style.color='#2563eb';
+    dow.appendChild(d);
+  });
+  calendarBox.appendChild(dow);
+
+  const grid=document.createElement('div'); grid.className='grid';
+  for(let i=0;i<42;i++){
+    const idx=i-startDow;
+    const cell=document.createElement('div'); cell.className='cell';
+    if(idx<0||idx>=days){ cell.classList.add('muted'); grid.appendChild(cell); continue; }
+
+    const d=idx+1;
+    const ymd=`${Y}-${M}-${String(d).padStart(2,'0')}`;
+    const wd = weekday(ymd);
+    const isHoliday=!!CONFIG.HOLIDAYS_2026[ymd];
+
+    const daySpan=document.createElement('div');
+    if(isHoliday){
+      daySpan.className='holiday day';
+      daySpan.textContent=`${d} ${CONFIG.HOLIDAYS_2026[ymd]}`;
+    }else{
+      daySpan.className='day';
+      if(wd===0) daySpan.classList.add('sun');
+      if(wd===6) daySpan.classList.add('sat');
+      daySpan.textContent=String(d);
+    }
+    cell.appendChild(daySpan);
+
+    const count=(st.lunchByDate[ymd]||[]).length;
+    const stat=document.createElement('div');
+    stat.style.cssText='position:absolute; bottom:6px; right:8px; font-size:12px; color:#374151;';
+    stat.textContent=`인원 ${count}`;
+    cell.appendChild(stat);
+
+    grid.appendChild(cell);
+  }
+  calendarBox.appendChild(grid);
+  return calendarBox;
+}
+
+function renderNameMenuTable(mapByName, title){
+  const wrap=document.createElement('div');
+  const head=document.createElement('div');
+  head.style.cssText='font-weight:800;margin:2px 0 8px;';
+  head.textContent = `${title} (이름별)`;
+  wrap.appendChild(head);
+
+  const table=document.createElement('table'); table.className='simple';
+  table.innerHTML=`
+    <thead><tr>
+      <th style="width:140px">이름</th>
+      <th>메뉴</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tb=table.querySelector('tbody');
+
+  const entries = Object.entries(mapByName||{}).sort((a,b)=>a[0].localeCompare(b[0]));
+  if(!entries.length){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td colspan="2" class="small-muted">아직 주문이 없습니다.</td>`;
+    tb.appendChild(tr);
+  }else{
+    entries.forEach(([nm,menu])=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td><b>${escapeHtml(nm)}</b></td><td>${escapeHtml(menu)}</td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function aggregateMenuCounts(mapByName){
+  const counts = {};
+  Object.values(mapByName||{}).forEach(menu=>{
+    const key = (menu||'').trim();
+    if (!key) return;
+    counts[key] = (counts[key]||0) + 1;
+  });
+  return Object.entries(counts).sort((a,b)=>{
+    if (b[1]!==a[1]) return b[1]-a[1];
+    return a[0].localeCompare(b[0]);
+  });
+}
+
+function renderMenuCountTable(mapByName, title, isCafe=false){
+  const wrap=document.createElement('div');
+  const head=document.createElement('div');
+  head.style.cssText='font-weight:800;margin:2px 0 8px;';
+  head.textContent = `${title} (메뉴별 수량)`;
+  wrap.appendChild(head);
+
+  if (isCafe){
+    const note=document.createElement('div');
+    note.className='small-muted';
+    note.style.marginBottom='6px';
+    note.textContent='카페는 자유입력이라 동일한 텍스트끼리만 묶여 수량이 계산됩니다.';
+    wrap.appendChild(note);
+  }
+
+  const table=document.createElement('table'); table.className='simple';
+  table.innerHTML=`
+    <thead><tr>
+      <th>메뉴</th>
+      <th style="width:110px">수량</th>
+    </tr></thead>
+    <tbody></tbody>
+  `;
+  const tb=table.querySelector('tbody');
+
+  const agg = aggregateMenuCounts(mapByName);
+  if(!agg.length){
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td colspan="2" class="small-muted">아직 주문이 없습니다.</td>`;
+    tb.appendChild(tr);
+  }else{
+    agg.forEach(([menu,count])=>{
+      const tr=document.createElement('tr');
+      tr.innerHTML=`<td>${escapeHtml(menu)}</td><td><b>${count}</b></td>`;
+      tb.appendChild(tr);
+    });
+  }
+
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function renderRightView(){
+  const st=loadStore();
+  rightView.innerHTML='';
+
+  if(st.mode==='lunch'){
+    rightView.appendChild(renderLunchCalendarCountsOnly());
+    return;
+  }
+
+  const stack=document.createElement('div');
+  stack.className='view-stack';
+
+  if(st.mode==='cafe'){
+    stack.appendChild(renderNameMenuTable(st.cafeByName, '카페 주문'));
+    stack.appendChild(renderMenuCountTable(st.cafeByName, '카페 주문', true));
+  }else if(st.mode==='dumpling'){
+    stack.appendChild(renderNameMenuTable(st.dumplingByName, '만두 주문'));
+    stack.appendChild(renderMenuCountTable(st.dumplingByName, '만두 주문'));
+  }else{
+    stack.appendChild(renderNameMenuTable(st.gimbapByName, '김밥 주문'));
+    stack.appendChild(renderMenuCountTable(st.gimbapByName, '김밥 주문'));
+  }
+
+  rightView.appendChild(stack);
+}
+
+/* ================= ADMIN SUMMARY ================= */
+function renderAdminSummary(){
+  const st=loadStore();
+  const box=$('#adminSummary');
+  box.innerHTML='';
+
+  if(!adminMode){
+    clearAllBtn.style.display='none';
+    return;
+  }
+
+  clearAllBtn.style.display = (st.mode==='lunch')?'none':'';
+  clearAllBtn.onclick=()=>{
+    if(!confirm('현재 모드 전체 주문을 삭제할까요?')) return;
+    const st2=loadStore();
+    if(st2.mode==='cafe') st2.cafeByName={};
+    if(st2.mode==='dumpling') st2.dumplingByName={};
+    if(st2.mode==='gimbap') st2.gimbapByName={};
+    saveStore(st2);
+    renderAll();
+    setResult('전체 삭제 완료');
+  };
+
+  if(st.mode==='lunch'){
+    $('#adminSummaryTitle').textContent='점심 선택자(이름별 날짜)';
+    const byName={};
+
+    Object.entries(st.lunchByDate).forEach(([ymd,names])=>{
+      names.forEach(nm=>{
+        byName[nm]=byName[nm]||[];
+        byName[nm].push(ymd);
+      });
+    });
+
+    const names=Object.keys(byName).sort();
+    if(!names.length){
+      box.innerHTML='<div class="small-muted">점심 선택 내역이 없습니다.</div>';
+      return;
+    }
+
+    names.forEach(nm=>{
+      const row=document.createElement('div'); row.className='pending-name';
+      row.innerHTML=`
+        <div><b>${nm}</b> <span class="small-muted">(${byName[nm].length}일)</span></div>
+        <div style="font-size:12px">${byName[nm].sort().join(', ')}</div>
+      `;
+      box.appendChild(row);
+    });
+
+  }else{
+    $('#adminSummaryTitle').textContent='선택자 목록(개별삭제 가능)';
+    const map=st.mode==='cafe'?st.cafeByName:st.mode==='dumpling'?st.dumplingByName:st.gimbapByName;
+    const entries=Object.entries(map||{}).sort();
+
+    if(!entries.length){
+      box.innerHTML='<div class="small-muted">선택 내역이 없습니다.</div>';
+      return;
+    }
+
+    entries.forEach(([nm,menu])=>{
+      const row=document.createElement('div'); row.className='pending-name';
+
+      const del=document.createElement('button');
+      del.className='btn small warn';
+      del.textContent='X';
+      del.addEventListener('click', ()=>{
+        const st2=loadStore();
+        const map2=st2.mode==='cafe'?st2.cafeByName:st2.mode==='dumpling'?st2.dumplingByName:st2.gimbapByName;
+        delete map2[nm];
+        saveStore(st2);
+        renderAll();
+      });
+
+      /* ✅ 메뉴 2글자여도 한줄 고정(nowrap) */
+      row.innerHTML=`
+        <div><b>${escapeHtml(nm)}</b></div>
+        <div style="display:flex;gap:6px;align-items:center; flex:1; min-width:0;">
+          <span class="nowrap" style="font-size:12px; flex:1;">
+            ${escapeHtml(menu)}
+          </span>
+        </div>
+      `;
+      row.querySelector('div:last-child').appendChild(del);
+      box.appendChild(row);
+    });
+  }
+}
+
+/* ================= HELPERS ================= */
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[m]));
+}
+
+/* ================= RENDER ALL ================= */
+function renderAll(){
+  renderModeSelect();
+  renderForm();
+  renderRightView();
+  renderRosterPanel();
+  renderAdminSummary();
+  renderVisibilityPanel();
+  renderMenuPanel();
+  updateAdminVisibility();
+}
+
+/* ================= BOOT ================= */
+(function boot(){
+  renderMonthSelect();
+  renderModeSelect();
+  renderAll();
+})();
+</script>
+</body>
+</html>
