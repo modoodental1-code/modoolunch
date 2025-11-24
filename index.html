@@ -15,7 +15,8 @@
     --cell-pad: 8px;
   }
   *{box-sizing:border-box}
-  body{margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Helvetica,Arial,sans-serif}
+  body{margin:0; background:var(--bg); color:var(--ink);
+       font-family:system-ui,-apple-system,Segoe UI,Roboto,Apple SD Gothic Neo,Noto Sans KR,Helvetica,Arial,sans-serif}
   .wrap{max-width:1600px; margin:28px auto; padding:0 16px}
   h1{font-size:22px; margin:0 0 6px}
   .row{display:grid; grid-template-columns:1.05fr 2.95fr; gap:16px; align-items:start}
@@ -37,9 +38,8 @@
   .cell.muted{background:#f3f4f6}
   .cell .day{font-weight:700}
   .cell .holiday{color:#dc2626; font-weight:700}
-
-  .day.sun { color:#dc2626; font-weight:700; }
-  .day.sat { color:#2563eb; font-weight:700; }
+  .day.sun { color:#dc2626; font-weight:800; }
+  .day.sat { color:#2563eb; font-weight:800; }
 
   .head{display:flex; gap:8px; align-items:center; margin-bottom:10px; justify-content:space-between}
   .badge{display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:var(--pri-100); color:var(--pri)}
@@ -51,6 +51,7 @@
   .date-item.disabled{opacity:.55}
   .pill{display:inline-block; padding:2px 6px; border-radius:8px; font-size:12px; background:#f3f4f6; color:#4b5563}
   .pill.deadline{background:#fee2e2; color:#991b1b; border:1px solid #fecaca;}
+
   .actions{display:flex; gap:8px; margin-top:12px}
   .btn{display:inline-flex; gap:8px; align-items:center; justify-content:center; padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:13px}
   .btn.small{padding:2px 6px; font-size:12px}
@@ -65,11 +66,6 @@
   .panel h3{margin:0 0 8px; font-size:16px}
   .pending-name{display:flex; gap:6px; align-items:center; justify-content:space-between; padding:6px 8px; border-bottom:1px dashed #eaeaea}
   .pending-name:last-child{border-bottom:none}
-
-  @media (max-width: 1100px){
-    .row{grid-template-columns:1fr}
-    .dates{max-height:300px}
-  }
 
   table.simple{
     width:100%; border-collapse:collapse; font-size:14px; background:#fff;
@@ -97,6 +93,11 @@
     display:flex; align-items:center; justify-content:space-between; gap:8px;
     margin-top:6px;
   }
+
+  @media (max-width: 1100px){
+    .row{grid-template-columns:1fr}
+    .dates{max-height:300px}
+  }
 </style>
 </head>
 <body>
@@ -105,6 +106,7 @@
   <h1>모원치 식사주문표</h1>
 
   <div class="row">
+    <!-- 좌측 폼 -->
     <div class="card" id="formCard">
       <div class="head">
         <h2 id="formTitle">신청 폼</h2>
@@ -114,6 +116,7 @@
       <div id="result" class="status"></div>
     </div>
 
+    <!-- 우측 보기 -->
     <div class="card" id="calendarCard">
       <div class="head">
         <div class="calendar-bar">
@@ -196,7 +199,7 @@ const CONFIG = {
 };
 
 /* ================= STORAGE ================= */
-const STORE_KEY = 'meal-order-v5';
+const STORE_KEY = 'meal-order-v5'; // ✅ 그대로 유지(데이터 안 날아감)
 const $ = (sel)=>document.querySelector(sel);
 
 function freshStore(){
@@ -205,15 +208,15 @@ function freshStore(){
     visibility: { cafe:true, dumpling:true, gimbap:true },
     mode:'lunch',
     month:'2026-01',
-    lunchByDate:{},
-    cafeByName:{},
-    dumplingByName:{},
-    gimbapByName:{},
+    lunchByDate:{},     // ymd -> [names]
+    cafeByName:{},      // name -> text
+    dumplingByName:{},  // name -> menu
+    gimbapByName:{},    // name -> menu
     dumplingOptions: CONFIG.DUMPLING_DEFAULT.slice(),
     gimbapOptions: CONFIG.GIMBAP_DEFAULT.slice(),
-    closedLunchWeeks: {},
-    lunchPriceByMonth: {},
-    lunchPrice: 0
+    closedLunchWeeks: {}, // weekStartMonday -> true
+    lunchPriceByMonth: {}, // ✅ 월별 단가 기준선 저장
+    lunchPrice: 0          // 구버전 호환
   };
 }
 function deepMerge(base, saved){
@@ -236,7 +239,20 @@ function loadStore(){
   try{
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
     const base = freshStore();
-    return deepMerge(base, saved);
+    const st = deepMerge(base, saved);
+
+    // ✅ 구버전 단가 자동 이관(현재 월에만 한번 세팅)
+   if (!st.lunchPriceByMonth) st.lunchPriceByMonth = {};
+
+const hasAnyBaseline = Object.keys(st.lunchPriceByMonth).some(k =>
+  Number.isFinite(st.lunchPriceByMonth[k])
+);
+
+if (!hasAnyBaseline && Number.isFinite(st.lunchPrice)) {
+  // 저장된 기준선이 하나도 없을 때만 현재월에 이관(딱 1번)
+  st.lunchPriceByMonth[st.month] = Number(st.lunchPrice);
+}
+    return st;
   }catch(e){
     return freshStore();
   }
@@ -256,13 +272,16 @@ function ymdRange(start, end){
   }
   return out;
 }
+
+/* ✅ 드롭다운용 월 리스트(표시 범위) */
 function monthsList(){
-  const arr = ['2025-12'];
+  const arr = ['2025-12']; // ✅ 25년 12월 포함
   for(let i=1;i<=12;i++){
     arr.push(`2026-${String(i).padStart(2,'0')}`);
   }
   return arr;
 }
+
 function weekday(ymd){ return new Date(ymd+'T00:00:00').getDay(); }
 function label(ymd){ return `${ymd}(${CONFIG.WEEKDAY_KO[weekday(ymd)]})`; }
 function toYmd(d){
@@ -296,31 +315,42 @@ function fmtWon(n){
   return v.toLocaleString('ko-KR') + '원';
 }
 
+/* ✅ 연-월을 비교 가능한 숫자로 변환 */
+function ymToIndex(ym){
+  const [y,m] = ym.split('-').map(Number);
+  return y*12 + (m-1);
+}
+
+/* ✅ 월별 단가 계산: "현재 월 이전 가장 가까운 기준선" 상속 */
+function priceForMonth(ym, st){
+  st.lunchPriceByMonth = st.lunchPriceByMonth || {};
+
+  const target = ymToIndex(ym);
+  let bestIdx = -Infinity;
+  let bestPrice = 0;
+
+  for (const k of Object.keys(st.lunchPriceByMonth)){
+    if (!Number.isFinite(st.lunchPriceByMonth[k])) continue;
+    const idx = ymToIndex(k);
+    if (idx <= target && idx > bestIdx){
+      bestIdx = idx;
+      bestPrice = Number(st.lunchPriceByMonth[k]);
+    }
+  }
+  return bestPrice;
+}
+
 /* ================= ENTER KEY BINDINGS ================= */
 function bindEnterToClick(inputEl, buttonEl){
   if(!inputEl || !buttonEl) return;
   inputEl.addEventListener('keydown',(e)=>{
-    if(e.key==='Enter'){
-      e.preventDefault();
-      buttonEl.click();
-    }
+    if(e.key==='Enter'){ e.preventDefault(); buttonEl.click(); }
   });
 }
 function bindEnterKeys(){
   bindEnterToClick($('#adminPw'), $('#adminBtn'));
   bindEnterToClick($('#rosterNew'), $('#rosterAddBtn'));
   bindEnterToClick($('#menuNew'), $('#menuAddBtn'));
-
-  const ta = $('#cafeMenu');
-  const btn = $('#submitBtn');
-  if(ta && btn){
-    ta.addEventListener('keydown',(e)=>{
-      if(e.key==='Enter' && e.ctrlKey){
-        e.preventDefault();
-        btn.click();
-      }
-    });
-  }
 }
 
 /* ================= UI STATE ================= */
@@ -400,11 +430,9 @@ function updateMonthVisibility(){
 $('#adminBtn').addEventListener('click', ()=>{
   if (!adminMode){
     if ($('#adminPw').value !== CONFIG.ADMIN_PW){ alert('관리자 비밀번호 오류'); return; }
-    adminMode = true;
-    $('#adminBtn').textContent='관리자 모드 ON';
+    adminMode = true; $('#adminBtn').textContent='관리자 모드 ON';
   }else{
-    adminMode = false;
-    $('#adminBtn').textContent='관리자 모드 OFF';
+    adminMode = false; $('#adminBtn').textContent='관리자 모드 OFF';
   }
   renderAll();
 });
@@ -540,7 +568,7 @@ function renderLunchCloseControls(container){
   const st = loadStore();
   if(!(st.mode==='lunch' && adminMode)) return;
 
-  const ym = monthSelect.value || '2026-01';
+  const ym = monthSelect.value || st.month;
   const [Y,M]=ym.split('-');
   const lastDay = new Date(Number(Y), Number(M), 0).getDate();
 
@@ -560,6 +588,7 @@ function renderLunchCloseControls(container){
   for(let d=1; d<=lastDay; d++){
     const ymd=`${Y}-${M}-${String(d).padStart(2,'0')}`;
     if(weekday(ymd)!==6) continue;
+
     const weekStart = weekStartMonday(ymd);
     const closed = !!st.closedLunchWeeks[weekStart];
 
@@ -611,20 +640,38 @@ function renderLunchPricePanel(container){
   panel.className='panel';
   panel.style.margin='0 0 10px';
   panel.innerHTML = `
-    <h3 style="margin-bottom:6px;">식대 단가 설정</h3>
-    <div class="small-muted" style="margin-bottom:6px;">단가 입력 시 이번 달 총 인원 × 단가로 총 식대가 자동 계산됩니다.</div>
+    <h3 style="margin-bottom:6px;">식대 단가 설정(현재 월 이후만 변경)</h3>
+    <div class="small-muted" style="margin-bottom:6px;">
+      현재 선택한 월부터 "이후 달" 단가가 새 값으로 바뀝니다. (이전 달은 고정)
+    </div>
     <label>식대 단가(원)</label>
     <input id="lunchPriceInput" type="number" min="0" step="100" placeholder="예: 9000" />
   `;
-
   container.appendChild(panel);
 
+  const ym = monthSelect.value || st.month;
   const inp = panel.querySelector('#lunchPriceInput');
-  inp.value = st.lunchPrice || 0;
+  inp.value = priceForMonth(ym, st);
 
+  // ✅ 네 규칙대로: 어떤 달에서 수정하든 "그 달 이후만" 덮어쓰기
   inp.addEventListener('input', ()=>{
-    const st2=loadStore();
-    st2.lunchPrice = Math.max(0, Number(inp.value)||0);
+    const st2 = loadStore();
+    const ym2 = monthSelect.value || st2.month;
+    const newPrice = Math.max(0, Number(inp.value)||0);
+
+    st2.lunchPriceByMonth = st2.lunchPriceByMonth || {};
+    const curIdx = ymToIndex(ym2);
+
+    // 현재 월보다 "이후" 기준선 전부 삭제
+    for (const k of Object.keys(st2.lunchPriceByMonth)){
+      if (ymToIndex(k) > curIdx){
+        delete st2.lunchPriceByMonth[k];
+      }
+    }
+
+    st2.lunchPriceByMonth[ym2] = newPrice;
+    st2.lunchPrice = newPrice; // 구버전 호환
+
     saveStore(st2);
     renderRightView();
     if(adminMode) renderAdminSummary();
@@ -634,7 +681,7 @@ function renderLunchPricePanel(container){
 /* ================= LUNCH: realtime date choices ================= */
 function renderDateChoicesRealtime(datesBox, currentName){
   const st = loadStore();
-  const ym = monthSelect.value || '2026-01';
+  const ym = monthSelect.value || st.month;
   const [Y,M]=ym.split('-');
   const lastDay = new Date(Number(Y), Number(M), 0).getDate();
   const monthStart = `${ym}-01`;
@@ -646,6 +693,7 @@ function renderDateChoicesRealtime(datesBox, currentName){
     const wd = weekday(ymd);
     const isHoliday2026 = !!CONFIG.HOLIDAYS_2026[ymd];
 
+    // ✅ 점심식사: 토요일 제거 + 일요일/공휴일 제거
     if (isHoliday2026 || wd===0 || wd===6) return;
 
     const names = st.lunchByDate[ymd]||[];
@@ -703,7 +751,7 @@ function renderDateChoicesRealtime(datesBox, currentName){
   }
 }
 
-/* ✅ 전체선택 버튼 동작 */
+/* ✅ 전체선택 */
 function selectAllLunchDates(datesBox, currentName){
   if(!currentName) return;
   const st2=loadStore();
@@ -738,7 +786,8 @@ function renderForm(){
   nameLabel.textContent='이름';
   const nameSelect=document.createElement('select');
   nameSelect.id='nameSelect';
-  nameSelect.innerHTML=`<option value="">이름 선택</option>` + st.roster.map(n=>`<option value="${n}">${n}</option>`).join('');
+  nameSelect.innerHTML=`<option value="">이름 선택</option>` +
+    st.roster.map(n=>`<option value="${n}">${n}</option>`).join('');
   formArea.appendChild(nameLabel);
   formArea.appendChild(nameSelect);
 
@@ -752,12 +801,12 @@ function renderForm(){
     info.textContent='이름 선택 후 날짜 체크/해제하면 즉시 반영됩니다. (토/일/공휴일 선택 불가)';
     formArea.appendChild(info);
 
-    // ✅ 희망날짜 라벨 + 전체선택 버튼
     const labRow=document.createElement('div');
     labRow.className='lab-row';
     const lab=document.createElement('label');
     lab.textContent='희망 날짜';
     lab.style.margin='0';
+
     const selectAllBtn=document.createElement('button');
     selectAllBtn.id='selectAllBtn';
     selectAllBtn.className='btn small';
@@ -769,8 +818,7 @@ function renderForm(){
     formArea.appendChild(labRow);
 
     const datesBox=document.createElement('div');
-    datesBox.className='dates';
-    datesBox.id='dates';
+    datesBox.className='dates'; datesBox.id='dates';
     formArea.appendChild(datesBox);
     renderDateChoicesRealtime(datesBox, null);
 
@@ -820,10 +868,8 @@ function renderForm(){
     menuLab.textContent='메뉴 작성';
     const ta=document.createElement('textarea');
     ta.id='cafeMenu';
-    ta.placeholder='예: 아메리카노 2잔, 라떼 1잔...';
-
-    formArea.appendChild(menuLab);
-    formArea.appendChild(ta);
+    ta.placeholder='';
+    formArea.appendChild(menuLab); formArea.appendChild(ta);
 
     const actions=document.createElement('div');
     actions.className='actions';
@@ -851,9 +897,7 @@ function renderForm(){
     const sel=document.createElement('select');
     sel.id='dumplingMenu';
     st.dumplingOptions.forEach(x=>sel.appendChild(new Option(x,x)));
-
-    formArea.appendChild(mLab);
-    formArea.appendChild(sel);
+    formArea.appendChild(mLab); formArea.appendChild(sel);
 
     const actions=document.createElement('div');
     actions.className='actions';
@@ -878,9 +922,7 @@ function renderForm(){
     const sel=document.createElement('select');
     sel.id='gimbapMenu';
     st.gimbapOptions.forEach(x=>sel.appendChild(new Option(x,x)));
-
-    formArea.appendChild(mLab);
-    formArea.appendChild(sel);
+    formArea.appendChild(mLab); formArea.appendChild(sel);
 
     const actions=document.createElement('div');
     actions.className='actions';
@@ -904,10 +946,10 @@ function renderForm(){
 /* ================= RIGHT VIEW ================= */
 function renderLunchCalendarCountsOnly(){
   const st=loadStore();
-  const ym=monthSelect.value||'2026-01';
+  const ym=monthSelect.value||st.month;
 
   const total = totalLunchCountForMonth(ym, st);
-  const price = st.lunchPrice || 0;
+  const price = priceForMonth(ym, st) || 0;
   const totalCost = price * total;
 
   const summary=document.createElement('div');
@@ -1220,4 +1262,3 @@ function renderAll(){
 </script>
 </body>
 </html>
-
