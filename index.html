@@ -48,7 +48,9 @@
   .dates{max-height:360px; overflow:auto; border:1px solid var(--line); border-radius:10px; padding:10px; background:#fff}
   .date-item{display:flex; align-items:center; gap:8px; padding:6px 4px; border-bottom:1px dashed #f0f0f0}
   .date-item:last-child{border-bottom:none}
+  .date-item.disabled{opacity:.55}
   .pill{display:inline-block; padding:2px 6px; border-radius:8px; font-size:12px; background:#f3f4f6; color:#4b5563}
+  .pill.deadline{background:#fee2e2; color:#991b1b; border:1px solid #fecaca;}
   .actions{display:flex; gap:8px; margin-top:12px}
   .btn{display:inline-flex; gap:8px; align-items:center; justify-content:center; padding:8px 12px; border-radius:10px; border:1px solid var(--line); background:#fff; cursor:pointer; font-size:13px}
   .btn.small{padding:2px 6px; font-size:12px}
@@ -80,10 +82,11 @@
   table.simple tr:last-child td{border-bottom:none;}
 
   .view-stack{display:grid; gap:12px;}
+  .nowrap{white-space:nowrap; word-break:keep-all;}
 
-  .nowrap{
-    white-space: nowrap;
-    word-break: keep-all;
+  .deadline-week-note{
+    font-size:12px; color:#991b1b; margin:6px 0 8px;
+    background:#fff7f7; border:1px solid #fecaca; padding:6px 8px; border-radius:8px;
   }
 </style>
 </head>
@@ -174,7 +177,7 @@ const CONFIG = {
     '2026-01-01':'신정','2026-03-01':'삼일절','2026-05-05':'어린이날','2026-06-06':'현충일','2026-08-15':'광복절','2026-10-03':'개천절','2026-10-09':'한글날','2026-12-25':'성탄절',
     '2026-02-16':'설날 연휴','2026-02-17':'설날','2026-02-18':'설날 연휴',
     '2026-05-24':'부처님오신날','2026-05-25':'대체공휴일',
-    '2026-09-24':'추석 연휴','2026-09-25':'추석','2026-09-26':'추석 연휴','2025-12-25':'크리스마스'
+    '2026-09-24':'추석 연휴','2026-09-25':'추석','2026-09-26':'추석 연휴'
   },
   DUMPLING_DEFAULT: ['고기만두','김치만두','갈비만두','새우만두','김치왕만두','고기왕만두'],
   GIMBAP_DEFAULT: [
@@ -184,7 +187,7 @@ const CONFIG = {
 };
 
 /* ================= STORAGE ================= */
-const STORE_KEY = 'meal-order-v3';
+const STORE_KEY = 'meal-order-v4';
 const $ = (sel)=>document.querySelector(sel);
 
 function freshStore(){
@@ -199,6 +202,7 @@ function freshStore(){
     gimbapByName:{},
     dumplingOptions: CONFIG.DUMPLING_DEFAULT.slice(),
     gimbapOptions: CONFIG.GIMBAP_DEFAULT.slice(),
+    closedLunchWeeks: {}  // ✅ 주 마감 저장: { 'YYYY-MM-DD(월요일)': true }
   };
 }
 function loadStore(){
@@ -231,6 +235,25 @@ function monthsList(){
 }
 function weekday(ymd){ return new Date(ymd+'T00:00:00').getDay(); }
 function label(ymd){ return `${ymd}(${CONFIG.WEEKDAY_KO[weekday(ymd)]})`; }
+function toYmd(d){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,'0');
+  const dd=String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${dd}`;
+}
+
+/* ✅ 그 날짜가 속한 주의 “월요일”을 구함 (주 = 월~일) */
+function weekStartMonday(ymd){
+  const d=new Date(ymd+'T00:00:00');
+  const wd=d.getDay(); // 0=일,1=월...6=토
+  const diff = (wd===0) ? -6 : (1-wd);
+  d.setDate(d.getDate()+diff);
+  return toYmd(d);
+}
+function isClosedWeek(ymd, st){
+  const ws = weekStartMonday(ymd);
+  return !!(st.closedLunchWeeks && st.closedLunchWeeks[ws]);
+}
 
 /* ================= UI STATE ================= */
 let adminMode = false;
@@ -446,6 +469,73 @@ $('#menuAddBtn').addEventListener('click', ()=>{
   renderAll();
 });
 
+/* ================= LUNCH: admin week close controls ================= */
+function renderLunchCloseControls(container){
+  const st = loadStore();
+  if(!(st.mode==='lunch' && adminMode)) return;
+
+  const ym = monthSelect.value || '2026-01';
+  const [Y,M]=ym.split('-');
+  const lastDay = new Date(Number(Y), Number(M), 0).getDate();
+
+  const wrap=document.createElement('div');
+  wrap.className='panel';
+  wrap.style.margin='0 0 10px';
+  wrap.innerHTML=`<h3 style="margin-bottom:6px">주 마감(토요일 기준)</h3>
+    <div class="small-muted" style="margin-bottom:6px;">
+      토요일 옆 버튼을 누르면 그 주(월~일)가 신청 마감됩니다.
+    </div>
+  `;
+
+  const list=document.createElement('div');
+  list.style.display='grid';
+  list.style.gap='6px';
+
+  for(let d=1; d<=lastDay; d++){
+    const ymd=`${Y}-${M}-${String(d).padStart(2,'0')}`;
+    if(weekday(ymd)!==6) continue; // 토요일만
+    const weekStart = weekStartMonday(ymd);
+    const closed = !!st.closedLunchWeeks[weekStart];
+
+    const row=document.createElement('div');
+    row.style.display='flex';
+    row.style.justifyContent='space-between';
+    row.style.alignItems='center';
+    row.style.padding='6px 8px';
+    row.style.background='#fff';
+    row.style.border='1px solid var(--line)';
+    row.style.borderRadius='8px';
+
+    const left=document.createElement('div');
+    left.textContent = `${ymd} (토) → 주 시작 ${weekStart}`;
+
+    const btn=document.createElement('button');
+    btn.className='btn small ' + (closed?'warn':'');
+    btn.textContent = closed ? '마감 해제' : '주 마감';
+
+    btn.addEventListener('click', ()=>{
+      const st2=loadStore();
+      st2.closedLunchWeeks = st2.closedLunchWeeks || {};
+      if(st2.closedLunchWeeks[weekStart]) delete st2.closedLunchWeeks[weekStart];
+      else st2.closedLunchWeeks[weekStart]=true;
+
+      saveStore(st2);
+      renderAll();
+    });
+
+    row.appendChild(left);
+    row.appendChild(btn);
+    list.appendChild(row);
+  }
+
+  if(!list.children.length){
+    list.innerHTML = `<div class="small-muted">이 달에 토요일이 없습니다.</div>`;
+  }
+
+  wrap.appendChild(list);
+  container.appendChild(wrap);
+}
+
 /* ================= LUNCH: realtime date choices ================= */
 function renderDateChoicesRealtime(datesBox, currentName){
   const st = loadStore();
@@ -465,24 +555,28 @@ function renderDateChoicesRealtime(datesBox, currentName){
 
     const names = st.lunchByDate[ymd]||[];
     const checked = currentName && names.includes(currentName);
+    const closedWeek = isClosedWeek(ymd, st);
 
     const row=document.createElement('div');
-    row.className='date-item';
+    row.className='date-item' + (closedWeek?' disabled':'');
 
     const cb=document.createElement('input');
     cb.type='checkbox';
     cb.value=ymd;
     cb.checked=checked;
-    cb.disabled = !currentName;
+
+    // ✅ 마감주면 일반 사용자는 비활성
+    const disabledByClose = closedWeek && !adminMode;
+    cb.disabled = !currentName || disabledByClose;
 
     const lb=document.createElement('label');
     lb.style.margin='0';
     lb.style.flex='1';
-    lb.textContent=label(ymd);
+    lb.textContent=label(ymd) + (closedWeek ? ' - 마감주' : '');
 
     const pill=document.createElement('span');
-    pill.className='pill';
-    pill.textContent=`인원 ${names.length}`;
+    pill.className='pill' + (closedWeek?' deadline':'');
+    pill.textContent = closedWeek ? `마감` : `인원 ${names.length}`;
 
     cb.addEventListener('change', ()=>{
       if(!currentName) return;
@@ -531,6 +625,9 @@ function renderForm(){
   formArea.appendChild(nameSelect);
 
   if(st.mode==='lunch'){
+    // ✅ 관리자 주마감 컨트롤
+    renderLunchCloseControls(formArea);
+
     const info=document.createElement('div');
     info.className='small-muted';
     info.style.margin='6px 0 8px';
@@ -700,6 +797,7 @@ function renderLunchCalendarCountsOnly(){
     const ymd=`${Y}-${M}-${String(d).padStart(2,'0')}`;
     const wd = weekday(ymd);
     const isHoliday=!!CONFIG.HOLIDAYS_2026[ymd];
+    const closedWeek = isClosedWeek(ymd, st);
 
     const daySpan=document.createElement('div');
     if(isHoliday){
@@ -712,6 +810,19 @@ function renderLunchCalendarCountsOnly(){
       daySpan.textContent=String(d);
     }
     cell.appendChild(daySpan);
+
+    // ✅ 마감 주는 회색 비활성 느낌
+    if(closedWeek){
+      cell.style.background = '#f3f4f6';
+      cell.style.borderColor = '#e5e7eb';
+      const dead=document.createElement('div');
+      dead.className='pill deadline';
+      dead.style.position='absolute';
+      dead.style.top='6px';
+      dead.style.right='8px';
+      dead.textContent='마감';
+      cell.appendChild(dead);
+    }
 
     const count=(st.lunchByDate[ymd]||[]).length;
     const stat=document.createElement('div');
@@ -944,7 +1055,7 @@ function renderAll(){
   renderVisibilityPanel();
   renderMenuPanel();
   updateAdminVisibility();
-  updateMonthVisibility();   // ✅ 여기서 모드별 월드롭박스 표시/숨김 처리
+  updateMonthVisibility();
 }
 
 /* ================= BOOT ================= */
