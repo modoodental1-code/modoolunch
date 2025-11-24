@@ -191,6 +191,7 @@ const CONFIG = {
 };
 
 /* ================= STORAGE ================= */
+/* ✅ 기존 데이터 유지 위해 STORE_KEY 절대 바꾸지 말기 */
 const STORE_KEY = 'meal-order-v5';
 const $ = (sel)=>document.querySelector(sel);
 
@@ -206,15 +207,37 @@ function freshStore(){
     gimbapByName:{},
     dumplingOptions: CONFIG.DUMPLING_DEFAULT.slice(),
     gimbapOptions: CONFIG.GIMBAP_DEFAULT.slice(),
-    closedLunchWeeks: {},  // { 'YYYY-MM-DD(월요일)': true }
-    lunchPrice: 0          // ✅ 식대 단가(원)
+    closedLunchWeeks: {},
+    lunchPrice: 0
   };
 }
+
+/* ✅ 새 코드 업로드해도 기존 데이터 보존 + 새 필드만 기본값 채움 */
+function deepMerge(base, saved){
+  const out = Array.isArray(base) ? base.slice() : {...base};
+  if(!saved || typeof saved !== 'object') return out;
+
+  for(const k of Object.keys(saved)){
+    const sv = saved[k];
+    const bv = base[k];
+    if(bv && typeof bv==='object' && !Array.isArray(bv) &&
+       sv && typeof sv==='object' && !Array.isArray(sv)){
+      out[k] = deepMerge(bv, sv);
+    }else{
+      out[k] = sv;
+    }
+  }
+  return out;
+}
+
 function loadStore(){
   try{
-    const s = JSON.parse(localStorage.getItem(STORE_KEY));
-    return s || freshStore();
-  }catch(e){ return freshStore(); }
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY));
+    const base = freshStore();
+    return deepMerge(base, saved);
+  }catch(e){
+    return freshStore();
+  }
 }
 function saveStore(s){ localStorage.setItem(STORE_KEY, JSON.stringify(s)); }
 
@@ -257,8 +280,6 @@ function isClosedWeek(ymd, st){
   const ws = weekStartMonday(ymd);
   return !!(st.closedLunchWeeks && st.closedLunchWeeks[ws]);
 }
-
-/* ✅ 이번 달 점심 총 인원(모든 날짜 합) */
 function totalLunchCountForMonth(ym, st){
   const [Y,M]=ym.split('-');
   const lastDay = new Date(Number(Y), Number(M), 0).getDate();
@@ -271,6 +292,34 @@ function totalLunchCountForMonth(ym, st){
 function fmtWon(n){
   const v = Math.max(0, Number(n)||0);
   return v.toLocaleString('ko-KR') + '원';
+}
+
+/* ================= ENTER KEY BINDINGS ================= */
+function bindEnterToClick(inputEl, buttonEl){
+  if(!inputEl || !buttonEl) return;
+  inputEl.addEventListener('keydown',(e)=>{
+    if(e.key==='Enter'){
+      e.preventDefault();
+      buttonEl.click();
+    }
+  });
+}
+function bindEnterKeys(){
+  bindEnterToClick($('#adminPw'), $('#adminBtn'));       // 관리자모드
+  bindEnterToClick($('#rosterNew'), $('#rosterAddBtn')); // 이름추가
+  bindEnterToClick($('#menuNew'), $('#menuAddBtn'));     // 메뉴추가
+
+  // 카페 메뉴: Ctrl+Enter 저장
+  const ta = $('#cafeMenu');
+  const btn = $('#submitBtn');
+  if(ta && btn){
+    ta.addEventListener('keydown',(e)=>{
+      if(e.key==='Enter' && e.ctrlKey){
+        e.preventDefault();
+        btn.click();
+      }
+    });
+  }
 }
 
 /* ================= UI STATE ================= */
@@ -552,7 +601,7 @@ function renderLunchCloseControls(container){
   container.appendChild(wrap);
 }
 
-/* ✅ 식대 단가 입력(점심+관리자) */
+/* ================= LUNCH: admin lunch price panel ================= */
 function renderLunchPricePanel(container){
   const st = loadStore();
   if(!(st.mode==='lunch' && adminMode)) return;
@@ -596,7 +645,7 @@ function renderDateChoicesRealtime(datesBox, currentName){
     const wd = weekday(ymd);
     const isHoliday2026 = !!CONFIG.HOLIDAYS_2026[ymd];
 
-    if (isHoliday2026 || wd===0 || wd===6) return;
+    if (isHoliday2026 || wd===0 || wd===6) return; // 토/일/공휴일 제거
 
     const names = st.lunchByDate[ymd]||[];
     const checked = currentName && names.includes(currentName);
@@ -670,7 +719,7 @@ function renderForm(){
 
   if(st.mode==='lunch'){
     renderLunchCloseControls(formArea);
-    renderLunchPricePanel(formArea);   // ✅ 여기 추가
+    renderLunchPricePanel(formArea);
 
     const info=document.createElement('div');
     info.className='small-muted';
@@ -814,7 +863,6 @@ function renderLunchCalendarCountsOnly(){
   const st=loadStore();
   const ym=monthSelect.value||'2026-01';
 
-  // ✅ 상단 요약바(총인원/총식대)
   const total = totalLunchCountForMonth(ym, st);
   const price = st.lunchPrice || 0;
   const totalCost = price * total;
@@ -1117,6 +1165,7 @@ function renderAll(){
   renderMenuPanel();
   updateAdminVisibility();
   updateMonthVisibility();
+  bindEnterKeys(); // ✅ DOM 그린 뒤 엔터키 바인딩
 }
 
 /* ================= BOOT ================= */
