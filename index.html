@@ -92,6 +92,11 @@
   .summary-item{
     background:#f3f4f6; padding:4px 8px; border-radius:999px; font-size:13px;
   }
+
+  .lab-row{
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    margin-top:6px;
+  }
 </style>
 </head>
 <body>
@@ -191,7 +196,6 @@ const CONFIG = {
 };
 
 /* ================= STORAGE ================= */
-/* ✅ 기존 데이터 유지 위해 STORE_KEY 절대 바꾸지 말기 */
 const STORE_KEY = 'meal-order-v5';
 const $ = (sel)=>document.querySelector(sel);
 
@@ -211,8 +215,6 @@ function freshStore(){
     lunchPrice: 0
   };
 }
-
-/* ✅ 새 코드 업로드해도 기존 데이터 보존 + 새 필드만 기본값 채움 */
 function deepMerge(base, saved){
   const out = Array.isArray(base) ? base.slice() : {...base};
   if(!saved || typeof saved !== 'object') return out;
@@ -229,7 +231,6 @@ function deepMerge(base, saved){
   }
   return out;
 }
-
 function loadStore(){
   try{
     const saved = JSON.parse(localStorage.getItem(STORE_KEY));
@@ -305,11 +306,10 @@ function bindEnterToClick(inputEl, buttonEl){
   });
 }
 function bindEnterKeys(){
-  bindEnterToClick($('#adminPw'), $('#adminBtn'));       // 관리자모드
-  bindEnterToClick($('#rosterNew'), $('#rosterAddBtn')); // 이름추가
-  bindEnterToClick($('#menuNew'), $('#menuAddBtn'));     // 메뉴추가
+  bindEnterToClick($('#adminPw'), $('#adminBtn'));
+  bindEnterToClick($('#rosterNew'), $('#rosterAddBtn'));
+  bindEnterToClick($('#menuNew'), $('#menuAddBtn'));
 
-  // 카페 메뉴: Ctrl+Enter 저장
   const ta = $('#cafeMenu');
   const btn = $('#submitBtn');
   if(ta && btn){
@@ -645,7 +645,7 @@ function renderDateChoicesRealtime(datesBox, currentName){
     const wd = weekday(ymd);
     const isHoliday2026 = !!CONFIG.HOLIDAYS_2026[ymd];
 
-    if (isHoliday2026 || wd===0 || wd===6) return; // 토/일/공휴일 제거
+    if (isHoliday2026 || wd===0 || wd===6) return;
 
     const names = st.lunchByDate[ymd]||[];
     const checked = currentName && names.includes(currentName);
@@ -702,6 +702,30 @@ function renderDateChoicesRealtime(datesBox, currentName){
   }
 }
 
+/* ✅ 전체선택 버튼 동작 */
+function selectAllLunchDates(datesBox, currentName){
+  if(!currentName) return;
+  const st2=loadStore();
+  const cbs = Array.from(datesBox.querySelectorAll('input[type=checkbox]'));
+
+  cbs.forEach(cb=>{
+    if(cb.disabled) return;
+    cb.checked = true;
+    const ymd = cb.value;
+
+    st2.lunchByDate[ymd] = st2.lunchByDate[ymd] || [];
+    if(!st2.lunchByDate[ymd].includes(currentName)){
+      st2.lunchByDate[ymd].push(currentName);
+    }
+  });
+
+  saveStore(st2);
+  renderRightView();
+  renderDateChoicesRealtime(datesBox, currentName);
+  if(adminMode) renderAdminSummary();
+  setResult(`${currentName} 전체 날짜 선택 완료`);
+}
+
 /* ================= FORM ================= */
 function renderForm(){
   const st = loadStore();
@@ -727,9 +751,21 @@ function renderForm(){
     info.textContent='이름 선택 후 날짜 체크/해제하면 즉시 반영됩니다. (토/일/공휴일 선택 불가)';
     formArea.appendChild(info);
 
+    // ✅ 희망날짜 라벨 + 전체선택 버튼
+    const labRow=document.createElement('div');
+    labRow.className='lab-row';
     const lab=document.createElement('label');
     lab.textContent='희망 날짜';
-    formArea.appendChild(lab);
+    lab.style.margin='0';
+    const selectAllBtn=document.createElement('button');
+    selectAllBtn.id='selectAllBtn';
+    selectAllBtn.className='btn small';
+    selectAllBtn.textContent='전체선택';
+    selectAllBtn.disabled=true;
+
+    labRow.appendChild(lab);
+    labRow.appendChild(selectAllBtn);
+    formArea.appendChild(labRow);
 
     const datesBox=document.createElement('div');
     datesBox.className='dates';
@@ -737,8 +773,14 @@ function renderForm(){
     formArea.appendChild(datesBox);
     renderDateChoicesRealtime(datesBox, null);
 
+    selectAllBtn.addEventListener('click', ()=>{
+      const nm=nameSelect.value.trim();
+      selectAllLunchDates(datesBox, nm);
+    });
+
     nameSelect.addEventListener('change', ()=>{
       const nm=nameSelect.value.trim();
+      selectAllBtn.disabled = !nm;
       renderDateChoicesRealtime(datesBox, nm || null);
       setResult(nm?`${nm} 선택 날짜를 표시합니다.`:'이름을 선택하세요.', !!nm);
     });
@@ -1165,7 +1207,7 @@ function renderAll(){
   renderMenuPanel();
   updateAdminVisibility();
   updateMonthVisibility();
-  bindEnterKeys(); // ✅ DOM 그린 뒤 엔터키 바인딩
+  bindEnterKeys();
 }
 
 /* ================= BOOT ================= */
